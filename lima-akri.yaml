@@ -1,0 +1,54 @@
+images:
+- location: "https://cloud-images.ubuntu.com/releases/22.04/release/ubuntu-22.04-server-cloudimg-amd64.img"
+  arch: "x86_64"
+- location: "https://cloud-images.ubuntu.com/releases/22.04/release/ubuntu-22.04-server-cloudimg-arm64.img"
+  arch: "aarch64"
+
+cpus: 4
+memory: "8GiB"
+disk: "32GiB"
+
+mounts:
+- location: "~/Documents/Github/akri"
+  mountPoint: "/workspace/akri"
+  writable: true
+
+ssh:
+  localPort: 0
+  loadDotSSHPubKeys: true
+
+containerd:
+  system: false
+  user: false
+
+provision:
+- mode: system
+  script: |
+    #!/bin/bash
+    set -eux -o pipefail
+    apt-get update
+    apt-get install -y \
+      build-essential \
+      pkg-config \
+      libudev-dev \
+      libssl-dev \
+      protobuf-compiler \
+      curl \
+      git \
+      cmake \
+      libclang-dev \
+      clang \
+      linux-headers-generic \
+      libv4l-dev
+
+- mode: user
+  script: |
+    #!/bin/bash
+    set -eux -o pipefail
+    if ! command -v rustup &> /dev/null; then
+      curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+    fi
+    source $HOME/.cargo/env
+    rustup default stable
+    rustup target add x86_64-unknown-linux-musl
+    cargo install cargo-watch || true
