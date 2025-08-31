@@ -27,28 +27,35 @@ provision:
     #!/bin/bash
     set -eux -o pipefail
     apt-get update
+    # Install Akri's required dependencies from setup.sh
     apt-get install -y \
-      build-essential \
+      git \
+      curl \
+      libssl-dev \
       pkg-config \
       libudev-dev \
-      libssl-dev \
-      protobuf-compiler \
-      curl \
-      git \
+      libv4l-dev \
+      build-essential \
       cmake \
       libclang-dev \
       clang \
       linux-headers-generic \
-      libv4l-dev
+      python3 \
+      python3-pip
+    
+    # Install Helm
+    curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
 
 - mode: user
   script: |
     #!/bin/bash
     set -eux -o pipefail
+    # Install Rust with the exact version Akri uses (v1.82.0)
     if ! command -v rustup &> /dev/null; then
-      curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+      curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain=1.82.0
     fi
     source $HOME/.cargo/env
-    rustup default stable
+    rustup default 1.82.0
+    rustup component add rustfmt
+    # Add target for musl builds (optional but useful)
     rustup target add x86_64-unknown-linux-musl
-    cargo install cargo-watch || true
