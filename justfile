@@ -6,6 +6,8 @@
 #   just build              # Build the project
 #   just test               # Run unit tests
 #   just test-e2e           # Run end-to-end tests (requires k3s in VM)
+#   just docs               # Generate and open documentation
+#   just clean --recreate   # Clean and recreate VM
 #
 # The VM starts automatically and stops when done to save resources.
 
@@ -23,11 +25,11 @@ build *ARGS='':
     # Create VM if it doesn't exist
     if ! limactl list {{_vm}} 2>/dev/null | grep -q {{_vm}}; then
         echo "Creating VM for first time use..."
-        limactl create --name={{_vm}} {{_config}}
+        limactl create --name={{_vm}} --tty=false {{_config}}
     fi
     
     # Start VM if not running
-    limactl start {{_vm}} 2>/dev/null || true
+    limactl start {{_vm}} --tty=false 2>/dev/null || true
     
     # Build
     limactl shell {{_vm}} -- bash -c "cd /workspace/akri && source ~/.cargo/env && cargo build {{ARGS}}"
@@ -41,14 +43,37 @@ test *ARGS='':
     # Create VM if it doesn't exist
     if ! limactl list {{_vm}} 2>/dev/null | grep -q {{_vm}}; then
         echo "Creating VM for first time use..."
-        limactl create --name={{_vm}} {{_config}}
+        limactl create --name={{_vm}} --tty=false {{_config}}
     fi
     
     # Start VM if not running
-    limactl start {{_vm}} 2>/dev/null || true
+    limactl start {{_vm}} --tty=false 2>/dev/null || true
     
     # Test
     limactl shell {{_vm}} -- bash -c "cd /workspace/akri && source ~/.cargo/env && cargo test {{ARGS}}"
+
+# Generate and open Rust documentation with Mermaid diagrams
+docs *FLAGS='':
+    #!/bin/bash
+    set -euo pipefail
+    trap 'limactl stop {{_vm}} 2>/dev/null || true' EXIT
+    
+    # Handle --recreate flag
+    if [[ "{{FLAGS}}" == *"--recreate"* ]]; then
+        echo "Recreating VM with fresh configuration..."
+        limactl delete {{_vm}} 2>/dev/null || true
+        limactl create --name={{_vm}} --tty=false {{_config}}
+    elif ! limactl list {{_vm}} 2>/dev/null | grep -q {{_vm}}; then
+        echo "Creating VM for first time use..."
+        limactl create --name={{_vm}} --tty=false {{_config}}
+    fi
+    
+    # Start VM if not running
+    limactl start {{_vm}} --tty=false 2>/dev/null || true
+    
+    # Generate docs
+    limactl shell {{_vm}} -- bash -c "cd /workspace/akri && source ~/.cargo/env && cargo doc --workspace --no-deps"
+    open target/doc/agent/index.html
 
 # Setup k3s cluster in VM for integration testing
 k3s-setup:
@@ -59,9 +84,9 @@ k3s-setup:
     # Ensure VM exists and is running
     if ! limactl list {{_vm}} 2>/dev/null | grep -q {{_vm}}; then
         echo "Creating VM for first time use..."
-        limactl create --name={{_vm}} {{_config}}
+        limactl create --name={{_vm}} --tty=false {{_config}}
     fi
-    limactl start {{_vm}} 2>/dev/null || true
+    limactl start {{_vm}} --tty=false 2>/dev/null || true
     
     # Install k3s
     limactl shell {{_vm}} -- bash -c "
@@ -82,7 +107,7 @@ test-setup: k3s-setup
     set -euo pipefail
     trap 'limactl stop {{_vm}} 2>/dev/null || true' EXIT
     
-    limactl start {{_vm}} 2>/dev/null || true
+    limactl start {{_vm}} --tty=false 2>/dev/null || true
     
     # Install Python dependencies for e2e tests
     limactl shell {{_vm}} -- bash -c "
@@ -109,7 +134,7 @@ test-e2e SUITE='': test-setup build
     set -euo pipefail
     trap 'limactl stop {{_vm}} 2>/dev/null || true' EXIT
     
-    limactl start {{_vm}} 2>/dev/null || true
+    limactl start {{_vm}} --tty=false 2>/dev/null || true
     
     # Run e2e tests
     limactl shell {{_vm}} -- bash -c "
@@ -125,7 +150,7 @@ test-debug-echo: k3s-setup build
     set -euo pipefail
     trap 'limactl stop {{_vm}} 2>/dev/null || true' EXIT
     
-    limactl start {{_vm}} 2>/dev/null || true
+    limactl start {{_vm}} --tty=false 2>/dev/null || true
     
     # Install Akri with debug echo
     limactl shell {{_vm}} -- bash -c "
@@ -158,7 +183,7 @@ test-clean:
     set -euo pipefail
     
     if limactl list {{_vm}} 2>/dev/null | grep -q {{_vm}}; then
-        limactl start {{_vm}} 2>/dev/null || true
+        limactl start {{_vm}} --tty=false 2>/dev/null || true
         
         # Uninstall Akri if installed
         limactl shell {{_vm}} -- bash -c "
@@ -182,15 +207,25 @@ build-full:
     @just build --features "agent-full udev-feat opcua-feat onvif-feat"
 
 # Clean build artifacts
-clean:
+clean *FLAGS='':
     #!/bin/bash
     set -euo pipefail
     trap 'limactl stop {{_vm}} 2>/dev/null || true' EXIT
+    
+    # Handle --recreate flag
+    if [[ "{{FLAGS}}" == *"--recreate"* ]]; then
+        echo "Recreating VM with fresh configuration..."
+        limactl delete {{_vm}} 2>/dev/null || true
+        limactl create --name={{_vm}} --tty=false {{_config}}
+        limactl start {{_vm}} --tty=false
+        limactl shell {{_vm}} -- bash -c "cd /workspace/akri && source ~/.cargo/env && cargo clean"
+        return
+    fi
     
     if ! limactl list {{_vm}} 2>/dev/null | grep -q {{_vm}}; then
         echo "VM doesn't exist"
         exit 0
     fi
     
-    limactl start {{_vm}} 2>/dev/null || true
+    limactl start {{_vm}} --tty=false 2>/dev/null || true
     limactl shell {{_vm}} -- bash -c "cd /workspace/akri && source ~/.cargo/env && cargo clean"
